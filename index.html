@@ -208,6 +208,23 @@
       overflow:hidden;
     }
 
+    /* stable viewport that ignores content growth */
+    .stage-viewport{
+      position: absolute;
+      inset: 12px;          /* matches stage-body padding */
+      z-index: 0;
+      overflow: hidden;
+      border-radius: 14px;  /* matches .stage border radius vibe */
+    }
+
+    /* now poster/effects fill the viewport, not the changing layout */
+    #posterLayer,
+    #sparkleLayer,
+    #discoGlow{
+      position: absolute;
+      inset: 0;
+    }
+
     .poster { position:absolute; inset:0; background:#000; z-index:0; }
     .poster img{
       position:absolute;
@@ -305,7 +322,7 @@
     }
 
     /* Keep UI text above effects */
-    #uiLayer { position: relative; z-index: 3; }
+    #uiLayer { position: relative; z-index: 2; }
 
     /* Respect reduced-motion */
     @media (prefers-reduced-motion: reduce){
@@ -568,16 +585,20 @@
             </div>
 
             <div class="stage-body" id="stageBody">
-              <div class="poster" id="posterLayer" aria-hidden="true">
-                <img class="poster-bg" src="assets/taric-collage.png" alt="">
-                <img class="poster-fg" src="assets/taric-collage.png" alt="">
+              <div class="stage-viewport" id="stageViewport" aria-hidden="true">
+                <div class="poster" id="posterLayer" aria-hidden="true">
+                  <img class="poster-bg" src="assets/taric-collage.png" alt="">
+                  <img class="poster-fg" src="assets/taric-collage.png" alt="">
+                </div>
+
+                  <!-- NEW: sparkle overlay -->
+                  <div class="sparkle-layer" id="sparkleLayer" aria-hidden="true"></div>
+
+                  <!-- NEW: disco glow overlay (subtle pulse) -->
+                  <div class="disco-glow" id="discoGlow" aria-hidden="true"></div>
+
               </div>
 
-                <!-- NEW: sparkle overlay -->
-                <div class="sparkle-layer" id="sparkleLayer" aria-hidden="true"></div>
-
-                <!-- NEW: disco glow overlay (subtle pulse) -->
-                <div class="disco-glow" id="discoGlow" aria-hidden="true"></div>
 
               <div class="big">
                 <div class="kicker" id="kicker">Initializing modules…</div>
@@ -1164,7 +1185,7 @@
     }
 
     // --- Parallax + Sparkles ---
-    const stageBody = document.getElementById('stageBody');
+    const stageBody = document.getElementById('stageViewport') || document.getElementById('stageBody');
     const posterFG  = document.querySelector('#posterLayer .poster-fg');
     const posterBG  = document.querySelector('#posterLayer .poster-bg');
     const sparkleLayer = document.getElementById('sparkleLayer');
