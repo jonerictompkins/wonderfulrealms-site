@@ -224,6 +224,77 @@
       pointer-events:none;
     }
 
+    /* --- Parallax layers --- */
+    #stageBody { position: relative; overflow: hidden; }
+    #posterLayer {
+      will-change: transform;
+      transform: translate3d(0,0,0) scale(1.06);
+      transition: transform 120ms ease-out;
+    }
+
+    /* Sparkles: DOM-only overlay, cheap + pretty */
+    .sparkle-layer{
+      position:absolute;
+      inset:0;
+      pointer-events:none;
+      z-index: 2; /* above poster, below UI text */
+      opacity: .85;
+      mix-blend-mode: screen;
+      overflow:hidden;
+    }
+
+    /* Each sparkle is a tiny element with animated twinkle */
+    .sparkle{
+      position:absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 999px;
+      background: radial-gradient(circle, rgba(255,255,255,.95), rgba(255,255,255,0) 70%);
+      filter: drop-shadow(0 0 10px rgba(255,255,255,.22));
+      opacity: 0;
+      transform: translate3d(0,0,0) scale(.6);
+      animation: twinkle var(--t, 1400ms) ease-in-out infinite;
+      animation-delay: var(--d, 0ms);
+    }
+    .sparkle.star{
+      width: 8px; height: 8px;
+    }
+    @keyframes twinkle{
+      0%   { opacity: 0; transform: translate3d(0,0,0) scale(.6) rotate(0deg); }
+      40%  { opacity: .95; transform: translate3d(0,-2px,0) scale(1.0) rotate(12deg); }
+      100% { opacity: 0; transform: translate3d(0,0,0) scale(.7) rotate(20deg); }
+    }
+
+    /* A subtle disco-ball-ish glow that pulses (doesn't need to know where the ball is) */
+    .disco-glow{
+      position:absolute;
+      inset:-10%;
+      pointer-events:none;
+      z-index: 1;
+      opacity: .28;
+      background:
+        radial-gradient(420px 260px at 55% 20%, rgba(124,247,255,.18), transparent 70%),
+        radial-gradient(500px 320px at 52% 28%, rgba(255,59,92,.16), transparent 72%),
+        radial-gradient(700px 420px at 50% 35%, rgba(255,255,255,.08), transparent 75%);
+      animation: discoPulse 2.8s ease-in-out infinite;
+      mix-blend-mode: screen;
+      will-change: opacity, transform;
+    }
+    @keyframes discoPulse{
+      0%,100% { opacity: .22; transform: translate3d(0,0,0) scale(1.00); }
+      50%     { opacity: .34; transform: translate3d(0,-4px,0) scale(1.02); }
+    }
+
+    /* Keep UI text above effects */
+    #uiLayer { position: relative; z-index: 3; }
+
+    /* Respect reduced-motion */
+    @media (prefers-reduced-motion: reduce){
+      #posterLayer{ transition:none; }
+      .sparkle{ animation:none; opacity:.35; }
+      .disco-glow{ animation:none; opacity:.18; }
+    }
+
     .big{
       position:relative;
       z-index:2;
@@ -481,6 +552,12 @@
               <div class="poster" aria-hidden="true">
                 <img src="assets/taric-collage.png?v=2" alt="">
               </div>
+
+                <!-- NEW: sparkle overlay -->
+                <div class="sparkle-layer" id="sparkleLayer" aria-hidden="true"></div>
+
+                <!-- NEW: disco glow overlay (subtle pulse) -->
+                <div class="disco-glow" id="discoGlow" aria-hidden="true"></div>
 
               <div class="big">
                 <div class="kicker" id="kicker">Initializing modules…</div>
@@ -947,9 +1024,18 @@
 
   closeSlam?.addEventListener('click', () => { if (state.stage === 'slam') enterChaos(); });
 
+  const isMobile = window.matchMedia('(max-width: 899px)').matches;
+
   chaosSlider?.addEventListener('input', () => {
     state.chaos = parseInt(chaosSlider.value, 10);
-    if (state.chaos >= 60) randomBurst(0.25 + state.chaos/170);
+
+    if (state.chaos >= 60) {
+      randomBurst(0.25 + state.chaos / 170);
+    }
+
+    const base = window.matchMedia('(max-width: 899px)').matches ? 18 : 24;
+    const extra = Math.floor(state.chaos / 4); // scales gradually
+    makeSparkles(base + extra);
   });
 
   // Optional: keyboard easter eggs (Love / tactel / code)
@@ -976,79 +1062,174 @@
   });
 
     // --- Mobile pane resizing + collapse ---
-  const grid = document.getElementById('grid');
-  const splitter = document.getElementById('splitter');
-  const paneTerm = document.getElementById('paneTerm');
-  const toggleTerm = document.getElementById('toggleTerm');
+    const grid = document.getElementById('grid');
+    const splitter = document.getElementById('splitter');
+    const paneTerm = document.getElementById('paneTerm');
+    const toggleTerm = document.getElementById('toggleTerm');
 
-  let dragging = false;
-  let lastGood = null;
-  let collapsed = false;
+    let dragging = false;
+    let lastGood = null;
+    let collapsed = false;
 
-  function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
+    function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
 
-  function setTermPx(px){
-    // Only meaningful on mobile
-    const isMobile = window.matchMedia('(max-width: 899px)').matches;
-    if (!isMobile) return;
+    function setTermPx(px){
+      // Only meaningful on mobile
+      const isMobile = window.matchMedia('(max-width: 899px)').matches;
+      if (!isMobile) return;
 
-    // Keep stage usable: enforce bounds
-    const gridH = grid.getBoundingClientRect().height;
-    const min = 110;                 // terminal minimum
-    const max = gridH - 220;         // leave room for stage
-    const val = clamp(px, min, max);
+      // Keep stage usable: enforce bounds
+      const gridH = grid.getBoundingClientRect().height;
+      const min = 110;                 // terminal minimum
+      const max = gridH - 220;         // leave room for stage
+      const val = clamp(px, min, max);
 
-    document.documentElement.style.setProperty('--termPx', `${Math.round(val)}px`);
-    lastGood = val;
+      document.documentElement.style.setProperty('--termPx', `${Math.round(val)}px`);
+      lastGood = val;
 
-    // Important: after resize, refresh FX canvas sizing
-    // (your ResizeObserver on card handles most cases, but this makes it snappier)
-    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 0);
-  }
+      // Important: after resize, refresh FX canvas sizing
+      // (your ResizeObserver on card handles most cases, but this makes it snappier)
+      setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 0);
+    }
 
-  function collapseTerm(){
-    collapsed = true;
-    toggleTerm?.setAttribute('aria-pressed', 'true');
-    document.documentElement.style.setProperty('--termPx', `var(--termCollapsedPx)`);
-    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 0);
-  }
+    function collapseTerm(){
+      collapsed = true;
+      toggleTerm?.setAttribute('aria-pressed', 'true');
+      document.documentElement.style.setProperty('--termPx', `var(--termCollapsedPx)`);
+      setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 0);
+    }
 
-  function expandTerm(){
-    collapsed = false;
-    toggleTerm?.setAttribute('aria-pressed', 'false');
-    setTermPx(lastGood ?? 420);
-  }
+    function expandTerm(){
+      collapsed = false;
+      toggleTerm?.setAttribute('aria-pressed', 'false');
+      setTermPx(lastGood ?? 420);
+    }
 
-  toggleTerm?.addEventListener('click', () => {
-    if (collapsed) expandTerm();
-    else collapseTerm();
-  });
+    toggleTerm?.addEventListener('click', () => {
+      if (collapsed) expandTerm();
+      else collapseTerm();
+    });
 
-  // Pointer-based drag (works for mouse + touch)
-  splitter?.addEventListener('pointerdown', (e) => {
-    const isMobile = window.matchMedia('(max-width: 899px)').matches;
-    if (!isMobile) return;
+    // Pointer-based drag (works for mouse + touch)
+    splitter?.addEventListener('pointerdown', (e) => {
+      const isMobile = window.matchMedia('(max-width: 899px)').matches;
+      if (!isMobile) return;
 
-    dragging = true;
-    splitter.setPointerCapture(e.pointerId);
-    collapsed = false;
-    toggleTerm?.setAttribute('aria-pressed', 'false');
-  });
+      dragging = true;
+      splitter.setPointerCapture(e.pointerId);
+      collapsed = false;
+      toggleTerm?.setAttribute('aria-pressed', 'false');
+    });
 
-  splitter?.addEventListener('pointermove', (e) => {
-    if (!dragging) return;
-    const gridRect = grid.getBoundingClientRect();
-    const px = e.clientY - gridRect.top;
-    setTermPx(px);
-  });
+    splitter?.addEventListener('pointermove', (e) => {
+      if (!dragging) return;
+      const gridRect = grid.getBoundingClientRect();
+      const px = e.clientY - gridRect.top;
+      setTermPx(px);
+    });
 
-  splitter?.addEventListener('pointerup', () => { dragging = false; });
-  splitter?.addEventListener('pointercancel', () => { dragging = false; });
+    splitter?.addEventListener('pointerup', () => { dragging = false; });
+    splitter?.addEventListener('pointercancel', () => { dragging = false; });
 
-  // Start mobile with a slightly smaller terminal than the desktop-ish default
-  if (window.matchMedia('(max-width: 899px)').matches) {
-    setTermPx(340);
-  }
+    // Start mobile with a slightly smaller terminal than the desktop-ish default
+    if (window.matchMedia('(max-width: 899px)').matches) {
+      setTermPx(340);
+    }
+
+    // --- Parallax + Sparkles ---
+    const stageBody = document.getElementById('stageBody');
+    const posterLayer = document.getElementById('posterLayer');
+    const sparkleLayer = document.getElementById('sparkleLayer');
+
+    // Create a fixed set of sparkles (cheaper than constantly creating/destroying)
+    function makeSparkles(count = 26){
+      if (!sparkleLayer) return;
+      sparkleLayer.innerHTML = "";
+      const rect = sparkleLayer.getBoundingClientRect();
+
+      for (let i=0; i<count; i++){
+        const s = document.createElement('div');
+        s.className = "sparkle" + (Math.random() < 0.35 ? " star" : "");
+        const x = Math.random() * rect.width;
+        const y = Math.random() * rect.height;
+
+        // Twinkle timing
+        const t = 1000 + Math.random()*1800;
+        const d = Math.random()*1600;
+
+        s.style.left = `${x}px`;
+        s.style.top = `${y}px`;
+        s.style.setProperty('--t', `${Math.round(t)}ms`);
+        s.style.setProperty('--d', `${Math.round(d)}ms`);
+
+        // Slightly vary size
+        const scale = 0.7 + Math.random()*1.1;
+        s.style.transform = `translate3d(0,0,0) scale(${scale})`;
+
+        sparkleLayer.appendChild(s);
+      }
+    }
+
+    // Rebuild sparkles on resize (so they fill the area nicely)
+    const sparkleRO = new ResizeObserver(() => makeSparkles(window.matchMedia('(max-width: 899px)').matches ? 20 : 30));
+    if (sparkleLayer) sparkleRO.observe(sparkleLayer);
+    // initial build
+    makeSparkles(window.matchMedia('(max-width: 899px)').matches ? 20 : 30);
+
+    // Parallax: subtle transform based on pointer + device tilt
+    let targetX = 0, targetY = 0;
+    let currX = 0, currY = 0;
+    const parallaxStrength = 10; // px-ish feel
+
+    function applyParallax(){
+      // Smooth follow
+      currX += (targetX - currX) * 0.10;
+      currY += (targetY - currY) * 0.10;
+
+      if (posterLayer){
+        posterLayer.style.transform = `translate3d(${currX}px, ${currY}px, 0) scale(1.06)`;
+      }
+      requestAnimationFrame(applyParallax);
+    }
+    requestAnimationFrame(applyParallax);
+
+    function setParallaxFromClient(clientX, clientY){
+      if (!stageBody) return;
+      const r = stageBody.getBoundingClientRect();
+      const nx = ((clientX - r.left) / r.width) * 2 - 1;  // -1..1
+      const ny = ((clientY - r.top) / r.height) * 2 - 1;  // -1..1
+      targetX = -nx * parallaxStrength;
+      targetY = -ny * (parallaxStrength * 0.7);
+    }
+
+    // Mouse / pointer
+    stageBody?.addEventListener('pointermove', (e) => {
+      setParallaxFromClient(e.clientX, e.clientY);
+    });
+
+    stageBody?.addEventListener('pointerleave', () => {
+      targetX = 0; targetY = 0;
+    });
+
+    // Mobile tilt (optional, graceful fallback)
+    // iOS needs permission; Android usually works without prompting.
+    async function enableTiltIfPossible(){
+      try{
+        if (typeof DeviceOrientationEvent !== 'undefined' &&
+            typeof DeviceOrientationEvent.requestPermission === 'function'){
+          // iOS: only enable after a user gesture; we won't auto-prompt.
+          return;
+        }
+        window.addEventListener('deviceorientation', (ev) => {
+          // gamma: left/right (-90..90), beta: front/back (-180..180)
+          const g = Math.max(-25, Math.min(25, ev.gamma ?? 0));
+          const b = Math.max(-25, Math.min(25, ev.beta ?? 0));
+          targetX = -(g / 25) * parallaxStrength;
+          targetY = -(b / 25) * (parallaxStrength * 0.6);
+        }, { passive:true });
+      } catch {}
+    }
+    enableTiltIfPossible();
 
   bootSequence();
 })();
