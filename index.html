@@ -236,9 +236,10 @@
 
     /* --- Parallax layers --- */
     #stageBody { position: relative; overflow: hidden; }
-    #posterLayer {
+    /* Parallax should move ONLY the foreground image */
+    .poster .poster-fg{
       will-change: transform;
-      transform: translate3d(0,0,0) scale(1.06);
+      transform: translate3d(0,0,0) scale(1.02);
       transition: transform 120ms ease-out;
     }
 
@@ -1149,7 +1150,7 @@
 
     // --- Parallax + Sparkles ---
     const stageBody = document.getElementById('stageBody');
-    const posterLayer = document.getElementById('posterLayer');
+    const posterFG = document.querySelector('#posterLayer .poster-fg');
     const sparkleLayer = document.getElementById('sparkleLayer');
 
     // Create a fixed set of sparkles (cheaper than constantly creating/destroying)
@@ -1181,25 +1182,42 @@
       }
     }
 
+    // Sparkles: keep counts consistent
+    const mqMobile = window.matchMedia('(max-width: 899px)');
+    const sparkleCount = () => (mqMobile.matches ? 26 : 40);
+
     // Rebuild sparkles on resize (so they fill the area nicely)
-    const sparkleRO = new ResizeObserver(() => makeSparkles(window.matchMedia('(max-width: 899px)').matches ? 20 : 30));
+    const sparkleRO = new ResizeObserver(() => makeSparkles(sparkleCount()));
     if (sparkleLayer) sparkleRO.observe(sparkleLayer);
+
     // initial build
-    makeSparkles(window.matchMedia('(max-width: 899px)').matches ? 26 : 40);
+    makeSparkles(sparkleCount());
 
     // Parallax: subtle transform based on pointer + device tilt
     let targetX = 0, targetY = 0;
     let currX = 0, currY = 0;
     const parallaxStrength = 10; // px-ish feel
 
+    const posterFG = document.querySelector('#posterLayer .poster-fg'); // <-- ensure this exists
+    const posterBG = document.querySelector('#posterLayer .poster-bg'); // optional
+
     function applyParallax(){
       // Smooth follow
       currX += (targetX - currX) * 0.10;
       currY += (targetY - currY) * 0.10;
 
-      if (posterLayer){
-        posterLayer.style.transform = `translate3d(${currX}px, ${currY}px, 0) scale(1.06)`;
+      // Move ONLY the foreground image (prevents "shrinking to top")
+      if (posterFG){
+        posterFG.style.transform =
+          `translate3d(${currX}px, ${currY}px, 0) scale(1.02)`;
       }
+
+      // Optional: gentle depth on the blurred background
+      if (posterBG){
+        posterBG.style.transform =
+          `translate3d(${currX * 0.35}px, ${currY * 0.35}px, 0) scale(1.10)`;
+      }
+
       requestAnimationFrame(applyParallax);
     }
     requestAnimationFrame(applyParallax);
