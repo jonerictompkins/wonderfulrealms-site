@@ -559,8 +559,8 @@
               </div>              
             </div>
 
-            <div class="stage-body">
-              <div class="poster" aria-hidden="true">
+            <div class="stage-body" id="stageBody">
+              <div class="poster" id="posterLayer" aria-hidden="true">
                 <img class="poster-bg" src="assets/taric-collage.png" alt="">
                 <img class="poster-fg" src="assets/taric-collage.png" alt="">
               </div>
@@ -1151,9 +1151,10 @@
     // --- Parallax + Sparkles ---
     const stageBody = document.getElementById('stageBody');
     const posterFG = document.querySelector('#posterLayer .poster-fg');
+    const posterBG = document.querySelector('#posterLayer .poster-bg');
     const sparkleLayer = document.getElementById('sparkleLayer');
 
-    // Create a fixed set of sparkles (cheaper than constantly creating/destroying)
+    // Create sparkles
     function makeSparkles(count = 26){
       if (!sparkleLayer) return;
       sparkleLayer.innerHTML = "";
@@ -1165,7 +1166,6 @@
         const x = Math.random() * rect.width;
         const y = Math.random() * rect.height;
 
-        // Twinkle timing
         const t = 1000 + Math.random()*1800;
         const d = Math.random()*1600;
 
@@ -1174,7 +1174,6 @@
         s.style.setProperty('--t', `${Math.round(t)}ms`);
         s.style.setProperty('--d', `${Math.round(d)}ms`);
 
-        // Slightly vary size
         const scale = 0.7 + Math.random()*1.1;
         s.style.transform = `translate3d(0,0,0) scale(${scale})`;
 
@@ -1182,40 +1181,30 @@
       }
     }
 
-    // Sparkles: keep counts consistent
+    // Sparkle counts
     const mqMobile = window.matchMedia('(max-width: 899px)');
     const sparkleCount = () => (mqMobile.matches ? 26 : 40);
 
-    // Rebuild sparkles on resize (so they fill the area nicely)
+    // Rebuild sparkles on resize + on breakpoint change
     const sparkleRO = new ResizeObserver(() => makeSparkles(sparkleCount()));
     if (sparkleLayer) sparkleRO.observe(sparkleLayer);
-
-    // initial build
+    mqMobile.addEventListener('change', () => makeSparkles(sparkleCount()));
     makeSparkles(sparkleCount());
 
-    // Parallax: subtle transform based on pointer + device tilt
+    // Parallax
     let targetX = 0, targetY = 0;
     let currX = 0, currY = 0;
-    const parallaxStrength = 10; // px-ish feel
-
-    const posterFG = document.querySelector('#posterLayer .poster-fg'); // <-- ensure this exists
-    const posterBG = document.querySelector('#posterLayer .poster-bg'); // optional
+    const parallaxStrength = 10;
 
     function applyParallax(){
-      // Smooth follow
       currX += (targetX - currX) * 0.10;
       currY += (targetY - currY) * 0.10;
 
-      // Move ONLY the foreground image (prevents "shrinking to top")
       if (posterFG){
-        posterFG.style.transform =
-          `translate3d(${currX}px, ${currY}px, 0) scale(1.02)`;
+        posterFG.style.transform = `translate3d(${currX}px, ${currY}px, 0) scale(1.02)`;
       }
-
-      // Optional: gentle depth on the blurred background
       if (posterBG){
-        posterBG.style.transform =
-          `translate3d(${currX * 0.35}px, ${currY * 0.35}px, 0) scale(1.10)`;
+        posterBG.style.transform = `translate3d(${currX * 0.35}px, ${currY * 0.35}px, 0) scale(1.10)`;
       }
 
       requestAnimationFrame(applyParallax);
@@ -1225,20 +1214,14 @@
     function setParallaxFromClient(clientX, clientY){
       if (!stageBody) return;
       const r = stageBody.getBoundingClientRect();
-      const nx = ((clientX - r.left) / r.width) * 2 - 1;  // -1..1
-      const ny = ((clientY - r.top) / r.height) * 2 - 1;  // -1..1
+      const nx = ((clientX - r.left) / r.width) * 2 - 1;
+      const ny = ((clientY - r.top) / r.height) * 2 - 1;
       targetX = -nx * parallaxStrength;
       targetY = -ny * (parallaxStrength * 0.7);
     }
 
-    // Mouse / pointer
-    stageBody?.addEventListener('pointermove', (e) => {
-      setParallaxFromClient(e.clientX, e.clientY);
-    });
-
-    stageBody?.addEventListener('pointerleave', () => {
-      targetX = 0; targetY = 0;
-    });
+    stageBody?.addEventListener('pointermove', (e) => setParallaxFromClient(e.clientX, e.clientY));
+    stageBody?.addEventListener('pointerleave', () => { targetX = 0; targetY = 0; });
 
     // Mobile tilt (optional, graceful fallback)
     // iOS needs permission; Android usually works without prompting.
