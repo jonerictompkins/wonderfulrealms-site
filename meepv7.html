@@ -1,0 +1,1054 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Opinion Engine v1.0 (Taric Build)</title>
+  <style>
+    :root{
+      --bg:#07080c;
+      --fg:#d7e0ff;
+      --muted:#8ea0d6;
+      --accent:#7cf7ff;
+      --danger:#ff3b5c;
+      --ok:#70ff9a;
+      --warn:#ffd36b;
+      --shadow: 0 12px 34px rgba(0,0,0,.48);
+    }
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--fg);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;}
+    *{box-sizing:border-box}
+    .wrap{min-height:100%;display:grid;place-items:center;padding:14px;}
+    .card{
+      width:min(980px, 98vw);
+      height:min(720px, 94vh);
+      border-radius:18px;
+      background:
+        radial-gradient(1200px 700px at 10% 10%, rgba(124,247,255,.10), transparent 60%),
+        radial-gradient(900px 560px at 90% 90%, rgba(255,59,92,.08), transparent 65%),
+        rgba(14,16,24,.84);
+      border:1px solid rgba(124,247,255,.18);
+      box-shadow: var(--shadow);
+      overflow:hidden;
+      position:relative;
+    }
+
+    /* Force FX canvas to truly cover the card */
+    #fx{
+      position:absolute;
+      left:0; top:0; right:0; bottom:0;
+      width:100%; height:100%;
+      pointer-events:none;
+      opacity:0;
+      transition: opacity .2s ease;
+      z-index: 50;
+    }
+    #fx.on{opacity:1}
+
+    .topbar{
+      display:flex;align-items:center;gap:10px;
+      padding:12px 14px;
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0));
+      border-bottom:1px solid rgba(255,255,255,.08);
+      font-size:13px;color:var(--muted);letter-spacing:.2px;
+      position:relative; z-index:2;
+    }
+    .dot{width:10px;height:10px;border-radius:50%;}
+    .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+    .title{margin-left:auto;opacity:.85}
+
+    :root{
+      --termPx: 420px;            /* default terminal height on mobile */
+      --termCollapsedPx: 120px;   /* collapsed terminal height on mobile */
+    }
+    
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 1fr;
+      height: calc(100% - 46px);
+      position:relative;
+      z-index:2;
+      min-height:0;
+    }
+
+    /* Splitter styling */
+    .splitter{
+      display:none;
+      background: rgba(255,255,255,.06);
+      border-top: 1px solid rgba(255,255,255,.10);
+      border-bottom: 1px solid rgba(255,255,255,.10);
+      cursor: row-resize;
+      position: relative;
+    }
+    .splitter::after{
+      content:"";
+      position:absolute;
+      left:50%;
+      top:50%;
+      width: 44px;
+      height: 4px;
+      transform: translate(-50%,-50%);
+      border-radius:999px;
+      background: rgba(124,247,255,.25);
+    }
+
+    /* Small button for header */
+    .miniBtn{
+      appearance:none;
+      border: 1px solid rgba(255,255,255,.16);
+      background: rgba(255,255,255,.06);
+      color: rgba(215,224,255,.92);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-weight: 900;
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .miniBtn:active{ transform: translateY(1px); }
+
+    /* Mobile layout becomes 3 rows: terminal / splitter / stage */
+    @media (max-width: 899px){
+      .grid{
+        grid-template-columns: 1fr;
+        grid-template-rows: var(--termPx) 10px 1fr;
+        height: calc(100% - 46px);
+        min-height:0;
+      }
+      #paneTerm{ grid-row: 1; min-height:0; }
+      #splitter{ grid-row: 2; display:block; touch-action: none; }
+      #paneStage{ grid-row: 3; min-height:0; }
+
+      /* tighten spacing on mobile */
+      .pane{ padding: 10px; }
+      .terminal{ padding: 10px; }
+      .line{ font-size: 12.5px; }
+      .topbar{ font-size: 12px; padding: 10px 12px; }
+    }
+
+    @media (min-width: 900px){
+      .grid{
+        grid-template-columns: 1.1fr .9fr;
+        grid-template-rows: 1fr;
+      }
+    }
+    .pane{padding:14px;position:relative;min-height:0;}
+    .pane.right{
+      border-top:1px solid rgba(255,255,255,.08);
+      background: linear-gradient(180deg, rgba(255,255,255,.03), rgba(255,255,255,0));
+    }
+    @media (min-width: 900px){
+      .pane.right{border-top:0;border-left:1px solid rgba(255,255,255,.08);}
+    }
+
+    .terminal{
+      height:100%;
+      border-radius:14px;
+      background: rgba(0,0,0,.45);
+      border:1px solid rgba(124,247,255,.14);
+      padding:12px;
+      overflow:hidden;
+      min-height:0;
+    }
+    .term-lines{
+      height:100%;
+      overflow:auto;
+      padding-right:6px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .line{white-space:pre-wrap;line-height:1.45;color:rgba(215,224,255,.95);font-size:13.5px;margin:0 0 6px 0}
+    .prompt{color:var(--accent)}
+    .muted{color:rgba(142,160,214,.95)}
+    .ok{color:var(--ok)}
+    .warn{color:var(--warn)}
+    .danger{color:var(--danger)}
+    .cursor{
+      display:inline-block;width:10px;height:18px;vertical-align:-3px;
+      background:rgba(124,247,255,.75);margin-left:6px;border-radius:2px;
+      animation: blink 1s steps(1,end) infinite;
+    }
+    @keyframes blink{50%{opacity:0}}
+
+    .stage{
+      height:100%;
+      border-radius:14px;
+      background: rgba(0,0,0,.30);
+      border:1px solid rgba(255,255,255,.10);
+      overflow:hidden;
+      display:grid;
+      grid-template-rows:auto 1fr auto;
+      min-height:0;
+      position:relative;
+    }
+    .stage-head{
+      padding:12px 12px 10px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      display:flex;align-items:center;justify-content:space-between;gap:10px;
+      position:relative; z-index:3;
+    }
+    .stage-head h2{
+      margin:0;font-size:12px;font-weight:800;letter-spacing:.9px;text-transform:uppercase;color:rgba(215,224,255,.85)
+    }
+    .badge{
+      font-size:12px;padding:6px 10px;border-radius:999px;
+      border:1px solid rgba(124,247,255,.20);
+      color:rgba(124,247,255,.95);
+      background: rgba(124,247,255,.06);
+    }
+
+    .stage-body{
+      position:relative;
+      min-height:0;
+      display:grid;
+      place-items:center;
+      padding:12px;
+      overflow:hidden;
+    }
+
+    .poster{position:absolute; inset:0; background:#000; z-index:0;}
+    .poster img{
+      width:100%; height:100%;
+      object-fit: cover;
+      filter: saturate(1.10) contrast(1.06) brightness(1.07);
+      opacity:.95;
+    }
+    .poster::after{
+      content:"";
+      position:absolute; inset:0;
+      background:
+        radial-gradient(900px 520px at 50% 18%, rgba(0,0,0,.04), rgba(0,0,0,.68) 70%),
+        linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.64));
+      pointer-events:none;
+    }
+
+    .big{
+      position:relative;
+      z-index:2;
+      text-align:center;
+      padding:10px;
+      width:100%;
+      user-select:none;
+    }
+    .big .kicker{
+      color:rgba(215,224,255,.88);
+      font-size:11.5px;
+      letter-spacing:.7px;
+      text-transform:uppercase;
+      margin-bottom:10px;
+      text-shadow: 0 10px 24px rgba(0,0,0,.55);
+    }
+    .big .hero{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-weight:1000;
+      letter-spacing:.3px;
+      font-size: clamp(26px, 5.3vw, 48px);
+      margin: 0 0 10px 0;
+      line-height:1.02;
+      text-shadow: 0 14px 34px rgba(0,0,0,.65);
+    }
+    .big .sub{
+      margin:0 auto;
+      max-width: 44ch;
+      color:rgba(215,224,255,.92);
+      font-size:14px;
+      line-height:1.55;
+      text-shadow: 0 12px 26px rgba(0,0,0,.70);
+      background: rgba(0,0,0,.20);
+      border: 1px solid rgba(255,255,255,.10);
+      padding:10px 12px;
+      border-radius: 14px;
+      backdrop-filter: blur(6px);
+    }
+
+    /* Controls pinned, stable layout */
+    .controls{
+      padding:10px 12px;
+      border-top:1px solid rgba(255,255,255,.08);
+      background: rgba(0,0,0,.40);
+      backdrop-filter: blur(8px);
+      display:grid;
+      grid-template-rows:auto auto;
+      gap:10px;
+      position:relative;
+      z-index:3;
+    }
+    .btnrow{
+      display:grid;
+      grid-template-columns: 1fr 1fr;
+      gap:10px;
+    }
+    @media (max-width: 420px){
+      .btnrow{grid-template-columns: 1fr;}
+    }
+    button{
+      appearance:none;border:1px solid rgba(124,247,255,.22);
+      background: rgba(124,247,255,.08);
+      color:rgba(215,224,255,.96);
+      border-radius:12px;
+      padding:12px 12px;
+      font-weight:900;
+      letter-spacing:.2px;
+      cursor:pointer;
+      box-shadow: 0 10px 24px rgba(0,0,0,.30);
+      transition: transform .12s ease, background .12s ease, border-color .12s ease;
+      touch-action: manipulation;
+      width:100%;
+    }
+    button:hover{transform: translateY(-1px);background: rgba(124,247,255,.12);border-color: rgba(124,247,255,.32)}
+    button:active{transform: translateY(1px) scale(.99)}
+    .dangerBtn{border-color: rgba(255,59,92,.30);background: rgba(255,59,92,.12);}
+    .dangerBtn:hover{background: rgba(255,59,92,.16);border-color: rgba(255,59,92,.42)}
+    .ghostBtn{border-color: rgba(255,255,255,.14);background: rgba(255,255,255,.06);}
+    .ghostBtn:hover{background: rgba(255,255,255,.09)}
+
+    .stage-foot{
+      padding:10px 12px;
+      border-top:1px solid rgba(255,255,255,.08);
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+      color:rgba(142,160,214,.95);
+      font-size:12px;
+      flex-wrap:wrap;
+      background: rgba(0,0,0,.22);
+    }
+    .sliderWrap{display:flex;align-items:center;gap:8px;flex:1;min-width: 180px;}
+    input[type="range"]{width:100%}
+
+    /* Slam overlay: top-aligned and scrollable */
+    .slam{
+      position:absolute;inset:0;
+      display:block;
+      background: rgba(0,0,0,.62);
+      opacity:0;pointer-events:none;
+      transition: opacity .18s ease;
+      z-index: 999;
+      padding:
+        max(14px, env(safe-area-inset-top))
+        max(14px, env(safe-area-inset-right))
+        max(18px, env(safe-area-inset-bottom))
+        max(14px, env(safe-area-inset-left));
+      overflow:auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    .slam.on{opacity:1;pointer-events:auto}
+    .slamBox{
+      width:min(760px, 94%);
+      margin: 0 auto;
+      border-radius:18px;
+      border:1px solid rgba(255,255,255,.12);
+      background:
+        radial-gradient(900px 420px at 50% 15%, rgba(255,59,92,.22), rgba(0,0,0,.48) 60%),
+        rgba(10,10,16,.86);
+      padding:16px 14px 14px;
+      box-shadow: 0 22px 70px rgba(0,0,0,.7);
+      text-align:center;
+      position:relative;
+      overflow:hidden;
+    }
+    .slamText{
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-weight:1000;
+      font-size: clamp(32px, 6vw, 72px);
+      line-height: .95;
+      margin: 10px 0 8px;
+      letter-spacing:.2px;
+    }
+    .clap{display:inline-block; transform: translateY(-2px); margin:0 .15em;}
+    .slamSmall{
+      color: rgba(215,224,255,.92);
+      font-size: 14px;
+      line-height:1.55;
+      margin: 6px auto 12px;
+      max-width: 54ch;
+    }
+    .slamSticky{
+      position: sticky;
+      bottom: 0;
+      padding-top: 10px;
+      padding-bottom: max(6px, env(safe-area-inset-bottom));
+      background: linear-gradient(180deg, rgba(10,10,16,0), rgba(10,10,16,.92) 40%, rgba(10,10,16,.95));
+    }
+
+    .silhouettes{
+      position:absolute;
+      inset:auto -30px -42px -30px;
+      height: 220px;
+      opacity:.62;
+      filter: drop-shadow(0 18px 24px rgba(0,0,0,.55));
+      pointer-events:none;
+    }
+    .silhouettes svg{width:100%;height:100%}
+    .silhouettes .a{fill: rgba(124,247,255,.20)}
+    .silhouettes .b{fill: rgba(255,59,92,.20)}
+    .silhouettes .line{stroke: rgba(255,255,255,.12);stroke-width:3;fill:none}
+
+    .floaty{
+      position:absolute;
+      color: rgba(215,224,255,.90);
+      font-weight:1000;
+      font-size: 13.5px;
+      padding:6px 10px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: rgba(0,0,0,.25);
+      backdrop-filter: blur(6px);
+      box-shadow: 0 12px 30px rgba(0,0,0,.35);
+      user-select:none;
+      pointer-events:none;
+      opacity:0;
+      transform: translateY(10px) scale(.98);
+      transition: opacity .25s ease, transform .25s ease;
+      white-space:nowrap;
+      max-width: 92vw;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      z-index: 80;
+    }
+    .floaty.on{opacity:1;transform: translateY(0) scale(1)}
+
+    .glitch{position:relative;}
+    .glitch::before, .glitch::after{
+      content: attr(data-text);
+      position:absolute; left:0; top:0; width:100%;
+      opacity:.65;
+    }
+    .glitch::before{
+      transform: translate(2px,0);
+      color: rgba(124,247,255,.92);
+      animation: glitch 1.6s infinite linear alternate-reverse;
+    }
+    .glitch::after{
+      transform: translate(-2px,0);
+      color: rgba(255,59,92,.88);
+      animation: glitch 1.2s infinite linear alternate-reverse;
+    }
+    @keyframes glitch{
+      0%{clip-path: inset(10% 0 72% 0)}
+      20%{clip-path: inset(68% 0 10% 0)}
+      40%{clip-path: inset(55% 0 25% 0)}
+      60%{clip-path: inset(75% 0 5% 0)}
+      80%{clip-path: inset(62% 0 18% 0)}
+      100%{clip-path: inset(48% 0 35% 0)}
+    }
+
+    .shake{animation: shake .18s linear 1;}
+    @keyframes shake{
+      0%{transform: translate(0,0)}
+      25%{transform: translate(-6px,3px)}
+      50%{transform: translate(5px,-2px)}
+      75%{transform: translate(-4px,-3px)}
+      100%{transform: translate(0,0)}
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="card" id="card">
+      <canvas id="fx"></canvas>
+
+      <div class="topbar">
+        <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+        <span>secure-session://valentine</span>
+        <span class="title">Opinion Engine v1.0 • Taric Build</span>
+      </div>
+
+      <div class="grid" id="grid">
+        <div class="pane" id="paneTerm">
+          <div class="terminal">
+            <div class="term-lines" id="term"></div>
+          </div>
+        </div>
+
+        <div class="splitter" id="splitter" aria-label="Resize panels" role="separator"></div>
+
+        <div class="pane right" id="paneStage">
+          <div class="stage">
+            <div class="stage-head">
+              <h2>Runtime</h2>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <button class="miniBtn" id="toggleTerm" type="button" aria-pressed="false">Terminal</button>
+                <span class="badge" id="statusBadge">BOOTING</span>
+              </div>              
+            </div>
+
+            <div class="stage-body">
+              <div class="poster" aria-hidden="true">
+                <img src="assets/taric-collage.png" alt="">
+              </div>
+
+              <div class="big">
+                <div class="kicker" id="kicker">Initializing modules…</div>
+                <div class="hero" id="hero">VALENTINE.EXE</div>
+                <p class="sub" id="sub">
+                  Booting a highly questionable program built for Taric.
+                  <br><span class="muted">(This is absolutely going on Reddit.)</span>
+                </p>
+              </div>
+
+              <div class="slam" id="slam">
+                <div class="slamBox">
+                  <div class="slamText glitch" data-text="IT'S MY OPINION">
+                    IT'S<span class="clap">👏</span>MY<span class="clap">👏</span>OPINION<span class="clap">👏</span>
+                  </div>
+                  <div class="slamSmall">
+                    Systems are unstable due to:
+                    <br>• excessive memes
+                    <br>• coffee exactness
+                    <br>• one (1) Akita named Code
+                    <br><span class="muted">I understand, but I'd like you to consider… pressing Continue.</span>
+                  </div>
+
+                  <div class="silhouettes" aria-hidden="true">
+                    <svg viewBox="0 0 1200 260" preserveAspectRatio="none">
+                      <path class="a" d="M160 240 C120 240, 90 215, 92 180 C95 150, 120 140, 145 135
+                        C160 90, 210 70, 255 72 C310 75, 330 110, 335 130
+                        C360 135, 395 150, 398 180 C402 220, 365 240, 330 240
+                        C305 240, 295 222, 285 208 C275 240, 240 248, 220 248
+                        C190 248, 175 240, 160 240 Z" />
+                      <path class="b" d="M1040 240 C1090 240, 1120 210, 1112 175 C1105 145, 1078 132, 1052 126
+                        C1045 85, 1005 62, 955 64 C900 66, 875 104, 870 126
+                        C840 132, 815 150, 812 178 C808 222, 845 240, 885 240
+                        C910 240, 924 228, 935 212 C945 244, 980 252, 1003 250
+                        C1020 248, 1030 244, 1040 240 Z" />
+                      <path class="line" d="M0 240 L1200 240" />
+                    </svg>
+                  </div>
+
+                  <div class="slamSticky">
+                    <button id="closeSlam" class="dangerBtn">Continue (chaos)</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="controls">
+              <div class="btnrow" id="btnrow" style="display:none">
+                <button id="btn1" class="dangerBtn">How do you know what's good for me?</button>
+                <button id="btn2" class="ghostBtn">Run diagnostics</button>
+                <button id="btn3" class="ghostBtn">Search: Tactel</button>
+                <button id="btn4" class="ghostBtn">Coffee calibration</button>
+              </div>
+
+              <div class="stage-foot">
+                <span>Mode: Serious Hacker → Meme Collapse</span>
+                <div class="sliderWrap" id="sliderWrap" style="display:none">
+                  <span>Chaos</span>
+                  <input id="chaos" type="range" min="0" max="100" value="25" />
+                </div>
+                <span>v1.0.♥</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+<script>
+(() => {
+  const term = document.getElementById('term');
+  const badge = document.getElementById('statusBadge');
+
+  const btnrow = document.getElementById('btnrow');
+  const btn1 = document.getElementById('btn1');
+  const btn2 = document.getElementById('btn2');
+  const btn3 = document.getElementById('btn3');
+  const btn4 = document.getElementById('btn4');
+
+  const kicker = document.getElementById('kicker');
+  const hero = document.getElementById('hero');
+  const sub = document.getElementById('sub');
+
+  const slam = document.getElementById('slam');
+  const closeSlam = document.getElementById('closeSlam');
+  const card = document.getElementById('card');
+
+  const fx = document.getElementById('fx');
+  const chaosSlider = document.getElementById('chaos');
+  const sliderWrap = document.getElementById('sliderWrap');
+
+  const state = {
+    stage: 'boot',     // boot -> ready -> slam -> chaos
+    chaos: 25,
+    particles: [],
+    w: 0, h: 0,
+    last: performance.now(),
+    typed: "",
+    loveArmed: false,
+    busy: false,
+  };
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  function line(html, cls='line') {
+    const p = document.createElement('p');
+    p.className = cls;
+    p.innerHTML = html;
+    term.appendChild(p);
+    term.scrollTop = term.scrollHeight;
+  }
+
+  async function typeLine(prefix, text, cls='line') {
+    const p = document.createElement('p');
+    p.className = cls;
+    p.innerHTML = `<span class="prompt">${prefix}</span> <span class="muted t"></span><span class="cursor"></span>`;
+    term.appendChild(p);
+    const span = p.querySelector('.t');
+    for (let i=0;i<text.length;i++){
+      span.textContent += text[i];
+      term.scrollTop = term.scrollHeight;
+      await sleep(12 + Math.random()*18);
+    }
+    p.querySelector('.cursor')?.remove();
+  }
+
+  function shake(){
+    card.classList.remove('shake');
+    void card.offsetWidth;
+    card.classList.add('shake');
+  }
+
+  // === FX (canvas) ===
+  const ctx = fx.getContext('2d', { alpha:true });
+
+  function resize(){
+    const rect = card.getBoundingClientRect();
+    fx.width = Math.floor(rect.width * devicePixelRatio);
+    fx.height = Math.floor(rect.height * devicePixelRatio);
+    state.w = fx.width;
+    state.h = fx.height;
+    ctx.setTransform(1,0,0,1,0,0);
+  }
+  resize();
+  new ResizeObserver(resize).observe(card);
+
+  function drawHeart(px, py, size, rot, alpha){
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(rot);
+    ctx.globalAlpha = alpha;
+
+    const s = size;
+
+    ctx.beginPath();
+
+    // Cleaner, symmetric heart path
+    ctx.moveTo(0, -s * 0.6);
+
+    ctx.bezierCurveTo(
+      s * 0.9, -s * 1.4,
+      s * 2.2, -s * 0.2,
+      0, s * 1.6
+    );
+
+    ctx.bezierCurveTo(
+      -s * 2.2, -s * 0.2,
+      -s * 0.9, -s * 1.4,
+      0, -s * 0.6
+    );
+
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  function spawnBurst(x, y, strength=1){
+    const count = Math.floor(300 + 1000 * strength);
+
+    for (let i=0;i<count;i++){
+      const angle = Math.random() * Math.PI * 2;
+      const speed = (0.6 + Math.random()*2.4) * (1.4 + strength*2.6);
+
+      state.particles.push({
+        x,
+        y,
+        vx: Math.cos(angle) * speed * (0.6 + Math.random()*1.2),
+        vy: Math.sin(angle) * speed * (0.6 + Math.random()*1.2),
+        life: 900 + Math.random()*1200,
+        born: performance.now(),
+        size: (1.2 + Math.random()*3.2) * devicePixelRatio,
+        spin: (Math.random()*2 - 1) * 0.006,
+        pulse: 0.85 + Math.random()*0.3, // for subtle breathing
+        t: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+
+  function randomBurst(strength=1){
+    const mx = 0.06 * state.w;
+    const my = 0.10 * state.h;
+    const x = mx + Math.random() * (state.w - 2*mx);
+    const y = my + Math.random() * (state.h - 2*my);
+    spawnBurst(x, y, strength);
+  }
+
+  function centerBurst(strength=1){
+    spawnBurst(state.w*0.5, state.h*0.5, strength);
+  }
+
+  function frame(now){
+    const dt = Math.min(40, now - state.last);
+    state.last = now;
+    ctx.clearRect(0,0,state.w,state.h);
+
+    if (state.stage === 'chaos' || state.stage === 'slam'){
+      fx.classList.add('on');
+      ctx.fillStyle = `rgba(0,0,0,0.12)`;
+      ctx.fillRect(0,0,state.w,state.h);
+
+      const gravity = 0.0010 * devicePixelRatio * (0.8 + state.chaos/120);
+      const drag = 0.992 - (state.chaos/1050);
+
+      for (let i=state.particles.length-1;i>=0;i--){
+        const p = state.particles[i];
+        const age = now - p.born;
+        const t = age / p.life;
+        if (t >= 1){ state.particles.splice(i,1); continue; }
+
+        p.vx *= drag;
+        p.vy = p.vy*drag + gravity*dt;
+        p.x += p.vx*dt;
+        p.y += p.vy*dt;
+        p.t += p.spin*dt;
+
+        const alpha = (1 - t) * (0.55 + 0.45*Math.sin((1-t)*Math.PI));
+        const mix = 0.35 + 0.65*Math.random();
+        const r = 255 * (0.30 + 0.70*mix);
+        const g = 120 * (0.35 + 0.45*(1-mix));
+        const b = 255 * (0.60 + 0.40*(1-mix));
+        ctx.fillStyle = `rgba(${r|0},${g|0},${b|0},${alpha})`;
+
+     //   if (p.kind === 'heart'){
+     //     drawHeart(p.x, p.y, p.size*(1.2 + state.chaos/120), p.t, alpha);
+     //   } else {
+     //     ctx.beginPath();
+     //     ctx.arc(p.x, p.y, p.size*(0.8 + state.chaos/220), 0, Math.PI*2);
+     //     ctx.fill();
+     //   }
+     // subtle pulsing size
+        const pulseScale = 1 + Math.sin(now * 0.008 + p.t) * 0.08 * p.pulse;
+
+        drawHeart(
+          p.x,
+          p.y,
+          p.size * pulseScale * (1.2 + state.chaos/140),
+          p.t,
+          alpha
+        );
+      }
+    } else {
+      fx.classList.remove('on');
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+
+  // === Floaties ===
+  const memePhrases = [
+    "IT'S MY OPINION.",
+    "How do you know what's good for me?",
+    "You know what's good for you? Me. (allegedly)",
+    "I understand, but I'd like you to consider…",
+    "Those hose were ripped.",
+    "I feel very attacked!",
+    "You're in danger, girl.",
+    "Lip sync for your life!",
+    "Code (Akita) has entered the chat.",
+    "Chicago mode: enabled.",
+    "Coffee exactness detected: APPROVED.",
+    "This build has no QA. Only vibes.",
+    "Respectfully? No.",
+    "Love?",
+    "Love.",
+  ];
+
+  function spawnFloaty(){
+    const el = document.createElement('div');
+    el.className = 'floaty';
+    el.textContent = memePhrases[Math.floor(Math.random()*memePhrases.length)];
+    card.appendChild(el);
+
+    const x = Math.random()*(card.clientWidth-220) + 12;
+    const y = Math.random()*(card.clientHeight-180) + 52;
+    el.style.left = x+'px';
+    el.style.top = y+'px';
+    setTimeout(()=> el.classList.add('on'), 20);
+
+    const driftX = (Math.random()*2-1) * (20 + state.chaos*0.45);
+    const driftY = (-1) * (18 + Math.random()*34);
+    const life = 1200 + Math.random()*1400;
+    const born = performance.now();
+
+    const tick = () => {
+      const now = performance.now();
+      const t = (now - born)/life;
+      if (t >= 1){ el.remove(); return; }
+      el.style.transform = `translate(${driftX*t}px, ${driftY*t}px) scale(${1 - 0.06*t})`;
+      el.style.opacity = String(1 - t);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  // === Main modes ===
+  function showSlam(){
+    state.stage = 'slam';
+    slam.classList.add('on');
+    badge.textContent = "UNSTABLE";
+    shake();
+    centerBurst(1.0);
+    line(`<span class="danger">ALERT</span> <span class="muted">meme_threshold_exceeded()</span>`);
+    line(`<span class="warn">!</span> <span class="muted">Switching modes:</span> Serious Hacker → Meme Collapse`);
+  }
+
+  function enterChaos(){
+    slam.classList.remove('on');
+    sliderWrap.style.display = "flex";
+    state.stage = 'chaos';
+    badge.textContent = "CHAOS";
+
+    kicker.textContent = "Runtime status: questionable";
+    hero.textContent = "OPINION CONFIRMED";
+    sub.innerHTML =
+      `You know what's good for you?<br><b>Me.</b> (allegedly)<br>` +
+      `<span class="muted">It's my opinion.</span><br><br>` +
+      `<span class="muted">Love?</span>`;
+
+    const loop = () => {
+      if (state.stage !== 'chaos') return;
+      spawnFloaty();
+      const delay = Math.max(110, 880 - state.chaos*7.2);
+      setTimeout(loop, delay);
+    };
+    loop();
+
+    centerBurst(1.2);
+
+    setTimeout(() => randomBurst(1.2), 250);
+    setTimeout(() => randomBurst(1.4), 500);
+
+    line(`<span class="ok">✓</span> <span class="muted">Opinion engine:</span> <span class="ok">ONLINE</span>`);
+    line(`<span class="ok">✓</span> <span class="muted">Drag Race quotes:</span> <span class="ok">LOADED</span>`);
+    line(`<span class="ok">✓</span> <span class="muted">Akita watchdog (Code):</span> <span class="ok">ON DUTY</span>`);
+    line(`<span class="prompt">root@valentine</span>:<span class="muted">~</span>$ <span class="muted">echo "Happy Valentine's Day, Taric"</span>`);
+    line(`<span class="ok">Happy Valentine's Day, Taric</span>`);
+    line(`<span class="muted">(Love.)</span>`);
+
+    state.loveArmed = true;
+  }
+
+  // === Cute button actions (restored) ===
+  async function diagnostics(){
+    if (state.busy) return;
+    state.busy = true;
+    try{
+      shake();
+      randomBurst(0.65);
+      line(`<span class="prompt">root@valentine</span>:<span class="muted">~</span>$ <span class="muted">diagnose --relationship --meme</span>`);
+      await sleep(140);
+      await typeLine(">", "Checking: drag race readiness…");
+      await sleep(120);
+      line(`<span class="ok">✓</span> <span class="muted">Result:</span> <span class="ok">You're in danger, girl.</span>`);
+      await sleep(150);
+      await typeLine(">", "Checking: hose integrity…");
+      await sleep(120);
+      line(`<span class="warn">!</span> <span class="muted">Result:</span> <span class="warn">Those hose were ripped.</span>`);
+      await sleep(150);
+      await typeLine(">", "Checking: emotional status…");
+      await sleep(120);
+      line(`<span class="ok">✓</span> <span class="muted">Conclusion:</span> <span class="ok">I feel very attacked!</span>`);
+      randomBurst(0.9);
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  async function tactelSearch(){
+    if (state.busy) return;
+    state.busy = true;
+    try{
+      line(`<span class="prompt">root@valentine</span>:<span class="muted">~</span>$ <span class="muted">search --fabric "tactel" --strict</span>`);
+      await sleep(140);
+      await typeLine(">", "Indexing: sweat-wicking perfection…");
+      await sleep(160);
+      line(`<span class="ok">✓</span> <span class="muted">Found:</span> <span class="ok">Tactel</span> <span class="muted">(obviously)</span>`);
+      await sleep(140);
+      await typeLine(">", "Generating: reddit-worthy justification…");
+      await sleep(150);
+      line(`<span class="muted">Next:</span> <span class="muted">buy it • flex about it • pretend it was effortless</span>`);
+      shake();
+      randomBurst(1.05);
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  async function coffeeCalibration(){
+    if (state.busy) return;
+    state.busy = true;
+    try{
+      line(`<span class="prompt">root@valentine</span>:<span class="muted">~</span>$ <span class="muted">coffee --calibrate --precision=maximum</span>`);
+      await sleep(140);
+      await typeLine(">", "Weighing dose to an unreasonable number of decimals…");
+      await sleep(140);
+      line(`<span class="ok">✓</span> <span class="muted">Dose:</span> <span class="ok">exact</span>`);
+      await sleep(120);
+      await typeLine(">", "Timing bloom like we’re being judged…");
+      await sleep(140);
+      line(`<span class="ok">✓</span> <span class="muted">Bloom:</span> <span class="ok">respectable</span>`);
+      await sleep(120);
+      await typeLine(">", "Final check: does Taric approve? …");
+      await sleep(140);
+      line(`<span class="ok">✓</span> <span class="muted">Result:</span> <span class="ok">approved by Taric</span>`);
+      randomBurst(1.2);
+    } finally {
+      state.busy = false;
+    }
+  }
+
+  // === Boot ===
+  async function bootSequence(){
+    badge.textContent = "BOOTING";
+    line(`<span class="prompt">root@valentine</span>:<span class="muted">~</span>$ <span class="muted">./valentine --target=Taric</span>`);
+    await sleep(160);
+    await typeLine(">", "Booting Meme Core…");
+    await sleep(100);
+    await typeLine(">", "Loading housewives.dll …");
+    await sleep(90);
+    await typeLine(">", "Loading DragRace.quotes …");
+    await sleep(90);
+    await typeLine(">", "Loading CoffeePrecision.module …");
+    await sleep(90);
+    await typeLine(">", "Registering watchdog: Akita(Code) …");
+    await sleep(90);
+    line(`<span class="danger">⚠</span> <span class="danger">OPINION DETECTED</span>  <span class="muted">(not a drill)</span>`);
+    await sleep(110);
+
+    badge.textContent = "READY";
+    kicker.textContent = "Runtime status: armed";
+    hero.textContent = "OPINION ENGINE";
+    sub.textContent = "Pick a button. You already know which one.";
+    btnrow.style.display = "grid";
+    state.stage = 'ready';
+  }
+
+  // === Wire up buttons ===
+  btn1?.addEventListener('click', () => { if (state.stage === 'ready') showSlam(); });
+  btn2?.addEventListener('click', diagnostics);
+  btn3?.addEventListener('click', tactelSearch);
+  btn4?.addEventListener('click', coffeeCalibration);
+
+  closeSlam?.addEventListener('click', () => { if (state.stage === 'slam') enterChaos(); });
+
+  chaosSlider?.addEventListener('input', () => {
+    state.chaos = parseInt(chaosSlider.value, 10);
+    if (state.chaos >= 60) randomBurst(0.25 + state.chaos/170);
+  });
+
+  // Optional: keyboard easter eggs (Love / tactel / code)
+  window.addEventListener('keydown', (e) => {
+    if (e.key.length === 1) state.typed += e.key.toLowerCase();
+    if (e.key === "Backspace") state.typed = state.typed.slice(0, -1);
+    state.typed = state.typed.slice(-60);
+
+    if (state.stage === 'slam'){ enterChaos(); return; }
+
+    if (state.stage === 'chaos' && state.loveArmed && state.typed.includes("love")){
+      line(`<span class="prompt">taric@valentine</span>:<span class="muted">~</span>$ <span class="muted">love</span>`);
+      line(`<span class="ok">Love.</span>`);
+      shake(); randomBurst(1.0);
+      state.typed = "";
+    }
+
+    if (state.typed.includes("tactel")){ tactelSearch(); state.typed = ""; }
+    if (state.typed.includes("code")){
+      line(`<span class="prompt">root@valentine</span>:<span class="muted">~</span>$ <span class="muted">ping akita-code</span>`);
+      line(`<span class="ok">64 bytes from Code: icmp_seq=1 ttl=64 time=0.0ms (tail wag)</span>`);
+      randomBurst(0.9); state.typed = "";
+    }
+  });
+
+    // --- Mobile pane resizing + collapse ---
+  const grid = document.getElementById('grid');
+  const splitter = document.getElementById('splitter');
+  const paneTerm = document.getElementById('paneTerm');
+  const toggleTerm = document.getElementById('toggleTerm');
+
+  let dragging = false;
+  let lastGood = null;
+  let collapsed = false;
+
+  function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
+
+  function setTermPx(px){
+    // Only meaningful on mobile
+    const isMobile = window.matchMedia('(max-width: 899px)').matches;
+    if (!isMobile) return;
+
+    // Keep stage usable: enforce bounds
+    const gridH = grid.getBoundingClientRect().height;
+    const min = 110;                 // terminal minimum
+    const max = gridH - 220;         // leave room for stage
+    const val = clamp(px, min, max);
+
+    document.documentElement.style.setProperty('--termPx', `${Math.round(val)}px`);
+    lastGood = val;
+
+    // Important: after resize, refresh FX canvas sizing
+    // (your ResizeObserver on card handles most cases, but this makes it snappier)
+    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 0);
+  }
+
+  function collapseTerm(){
+    collapsed = true;
+    toggleTerm?.setAttribute('aria-pressed', 'true');
+    document.documentElement.style.setProperty('--termPx', `var(--termCollapsedPx)`);
+    setTimeout(() => { window.dispatchEvent(new Event('resize')); }, 0);
+  }
+
+  function expandTerm(){
+    collapsed = false;
+    toggleTerm?.setAttribute('aria-pressed', 'false');
+    setTermPx(lastGood ?? 420);
+  }
+
+  toggleTerm?.addEventListener('click', () => {
+    if (collapsed) expandTerm();
+    else collapseTerm();
+  });
+
+  // Pointer-based drag (works for mouse + touch)
+  splitter?.addEventListener('pointerdown', (e) => {
+    const isMobile = window.matchMedia('(max-width: 899px)').matches;
+    if (!isMobile) return;
+
+    dragging = true;
+    splitter.setPointerCapture(e.pointerId);
+    collapsed = false;
+    toggleTerm?.setAttribute('aria-pressed', 'false');
+  });
+
+  splitter?.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const gridRect = grid.getBoundingClientRect();
+    const px = e.clientY - gridRect.top;
+    setTermPx(px);
+  });
+
+  splitter?.addEventListener('pointerup', () => { dragging = false; });
+  splitter?.addEventListener('pointercancel', () => { dragging = false; });
+
+  // Start mobile with a slightly smaller terminal than the desktop-ish default
+  if (window.matchMedia('(max-width: 899px)').matches) {
+    setTermPx(340);
+  }
+
+  bootSequence();
+})();
+</script>
+</body>
+</html>
